@@ -1,0 +1,15 @@
+# Build output (rebuild with `npm run build`; release zips are attached to GitHub releases)
+devices/
+dist/
+
+# Nord Drum 2 manual: Clavia's copyright, download it from nordkeyboards.com
+docs/*.pdf
+docs/manual.txt
+
+# SysEx dumps contain Clavia's factory programs and your own sounds
+*.syx
+docs/sysex/
+
+.DS_Store
+__pycache__/
+node_modules/
