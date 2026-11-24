@@ -237,14 +237,14 @@ for b in p.boxes:
     m = _re.match(r'V(\d) (\w+)$', name)
     if m:
         drum, col = int(m.group(1)), m.group(2)
-        v['parameter_longname'] = f'{drum} {col}'
+        v['parameter_longname'] = v['parameter_shortname'] = f'{drum} {col}'   # Live shows either name in places
         v['parameter_order'] = drum * 100 + COL_ORDER.index(col)
         if col in HIDE: v['parameter_invisible'] = 1
         continue
     m = _re.match(r'Dial (\d)\.(\d+)$', name)
     if m:
         dr, k = int(m.group(1)), int(m.group(2))
-        v['parameter_longname'] = f'{dr} Knob {k}'; v['parameter_shortname'] = f'Knob {k}'
+        v['parameter_longname'] = v['parameter_shortname'] = f'{dr} Knob {k}'
         v['parameter_order'] = dr * 100 + 20 + k
         continue
     if name in ('Nord Bank', 'Nord Prog'):
