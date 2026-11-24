@@ -253,6 +253,13 @@ function stepprog(d) {
 // (the Nord already has them, so nothing is sent). Without one, bases are forgotten and relearned on touch.
 let kits = null, kitsPath = '', kitsName = '';
 function currentKit() { return kits && kits[(curBank - 1) + ':' + (curProg - 1)]; }
+// True if any of the drum's sound parameters differs from the stored program (by Sextant's knobs, the Nord's
+// own knobs or automation)
+function drumEdited(v, k) {
+  const base = eng.voices[v].base, kit = k[v];
+  for (const n in kit) if (n in base && base[n] !== kit[n]) return true;
+  return false;
+}
 function kitChanged() {
   const k = currentKit();
   eng.forgetBases();
@@ -392,7 +399,19 @@ function paint() {
   m.set_font_size(10); m.move_to(13, 10); m.show_text(`DRUM ${selVoice + 1}`);
   m.set_font_size(9);
   m.set_source_rgba(C.text); m.move_to(62, 10);
-  m.show_text(!lockEdit ? 'dials set base sound' : selStep >= 0 ? `editing locks · step ${selStep + 1}` : 'editing locks · click a step');
+  if (lockEdit) m.show_text(selStep >= 0 ? `editing locks · step ${selStep + 1}` : 'editing locks · click a step');
+  else {
+    // What the knobs do, and whether this drum still sounds like the stored program
+    const k = currentKit();
+    if (!k) m.show_text('knobs set the base sound');
+    else if (!drumEdited(selVoice, k)) m.show_text(`kit ${curBank}-${curProg} · knobs tweak it`);
+    else {
+      const pre = `kit ${curBank}-${curProg} · `;
+      m.show_text(pre);
+      const w = mgraphics.text_measure(pre)[0];
+      m.set_source_rgba(C.hit); m.move_to(62 + w, 10); m.show_text('edited');
+    }
+  }
   if (lastIn) { m.set_source_rgba(C.lock); m.move_to(g.w - 88, 10); m.show_text(lastIn); }
   m.set_source_rgba(kits ? C.dim : C.warn); m.move_to(g.w - 88, 21); m.show_text(kits ? 'kits: ' + kitsName : 'no kits file');
 
@@ -405,6 +424,7 @@ function paint() {
     else line2 = L.length ? 'locked: ' + L.map(n => n + ' ' + fmtValue(n, v.locks[selStep][n])).join(' · ')
                           : 'turn a dial to lock it (Level/Pan: not lockable, use Velocity)';
   } else if (lockEdit) line2 = 'click a step to edit its locks · shift-click clears';
+  else if (currentKit() && drumEdited(selVoice, currentKit())) line2 = 'changed from the stored program · Clr drum restores it';
   else line2 = 'click a row to pick the drum · drag ↔ rotate, ↕ hits';
   m.set_source_rgba(warn ? C.warn : C.dim); m.move_to(13, 21); m.show_text(line2);
 
