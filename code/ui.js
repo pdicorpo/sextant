@@ -1,12 +1,13 @@
 // ---- Max [v8ui] glue: engine + step grid + dials/menus + lock editing (appended after engine.js) ----
 // Outlets: 0 raw MIDI for this track (channel 10)   1 "slot value" -> dials (via [prepend set], no feedback)
-//          2 dial colour messages                     3 "channel bytes..." -> [send] for the Sextant Out tracks
+//          2 (unused)
 //          4 "slot menu-message..." -> the 12 parameter menus
 //          5 note messages for this track -> [pipe] -> [midiout]: held back 3 ms so each drum's CCs (sent from
 //            the Out tracks) always reach the Nord before its note; Live doesn't order MIDI across tracks.
 //          6 "bank n" / "prog n" -> the program boxes (via [prepend set], no feedback)
 //          7 "<key><drum> value" (e.g. hits3 5) -> a row's number boxes, when the engine corrects or drags a value
-//          8 "slot _parameter_unitstyle n" -> one dial: note names when it shows Pitch, plain numbers otherwise
+//          8 "knob attribute..." (knob = drum*12 + slot) -> one knob: hidden (only the selected drum's set shows),
+//            unit style (note names for Pitch)
 //          9 0 / 1 -> the 16th-note [metro]: restart it when Live's loop (or a jump) leaves it waiting
 autowatch = 1;
 inlets = 1;
@@ -108,10 +109,12 @@ let ready = false;
 // a moment after the first knob value: when the mouse isn't down yet, decide 40 ms later.
 let mouseDown = false;
 function mouse(b) { mouseDown = !!b; }
-function dial(slot, val) {
+// dial <drum> <slot> <value>: each drum has its own 12 knobs (only the selected drum's are visible), so
+// knob automation always moves its own drum. Locks: only the visible (selected) drum's knobs, by hand.
+function dial(v, slot, val) {
   if (!ready) return;                     // dials report their stored values on load: not a user move
   val = Math.max(0, Math.min(127, Math.round(val)));
-  const v = selVoice, st = selStep, name = eng.voices[v].dials[slot];
+  const st = v === selVoice ? selStep : -1, name = eng.voices[v].dials[slot];
   if (lockEdit && st >= 0 && eng.canLock(name)) {
     if (mouseDown) { lockIt(v, st, name, val); return; }
     const t = new Task(() => {
@@ -148,13 +151,13 @@ function findKnobParams() {
     knobParams = [];
     for (let i = 0; i < n; i++) {
       const prm = new LiveAPI('this_device parameters ' + i);
-      const m = /^Knob (\d+)$/.exec([].concat(prm.get('name')).join(' '));
-      if (m) knobParams[+m[1] - 1] = prm;
+      const m = /^(\d) Knob (\d+)$/.exec([].concat(prm.get('name')).join(' '));
+      if (m) knobParams[(+m[1] - 1) * NUM_SLOTS + (+m[2] - 1)] = prm;
     }
   } catch (e) { knobParams = null; post('Sextant: could not read automation state: ' + e.message + '\n'); }
 }
-function automationPlaying(slot) {
-  const prm = knobParams && knobParams[slot];
+function automationPlaying(v, slot) {
+  const prm = knobParams && knobParams[v * NUM_SLOTS + slot];
   if (!prm) return false;
   try { return +[].concat(prm.get('automation_state'))[0] === 1; } catch (e) { return false; }
 }
@@ -162,7 +165,7 @@ automationPlaying.local = 1;
 
 function pick(slot, name) {
   if (eng.setDial(selVoice, slot, String(name))) notifyclients();
-  sendMenus(); sendDials(); mgraphics.redraw();
+  sendMenus(); sendDials(selVoice); mgraphics.redraw();
 }
 
 function lockedit(on) {
@@ -320,7 +323,7 @@ function handleIn(m) {
       if (name) {
         notifyclients();
         const slot = eng.voices[v].dials.indexOf(name);
-        if (v === selVoice && slot >= 0 && !(lockEdit && selStep >= 0) && !automationPlaying(slot)) outlet(1, [slot, m[2]]);
+        if (slot >= 0 && !(v === selVoice && lockEdit && selStep >= 0) && !automationPlaying(v, slot)) outlet(1, [v * NUM_SLOTS + slot, m[2]]);
       }
     }
     mgraphics.redraw();
@@ -335,21 +338,26 @@ function noteName(n) { return NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 2); }
 function fmtValue(name, val) { return name === 'Pitch' ? noteName(val) : String(val); }
 const UNIT_INT = 0, UNIT_MIDI = 8;          // live.dial unit styles: plain integer / MIDI note name
 const DRUM_COLORS = [0xff6b5b, 0xffb03b, 0xe8e04a, 0x5fd36b, 0x4fb8ff, 0xc07bff].map(h => rgb(h));
-function sendDials() {
-  const vals = eng.dialValues(selVoice, lockEdit ? selStep : -1);
-  // Don't move a knob that automation is driving: Live would take that as a hand on the knob and
-  // override (switch off) its automation. Those knobs keep showing the automated value.
-  for (let sl = 0; sl < vals.length; sl++) if (!automationPlaying(sl)) outlet(1, [sl, vals[sl]]);
-  const c = DRUM_COLORS[selVoice];
-  outlet(2, ['activedialcolor'].concat(c));
-  outlet(2, ['activeneedlecolor'].concat(c));
+// Put each drum's knobs on its base values (the selected drum's on the selected step's locks in Edit locks).
+// Don't move a knob that automation is driving: Live would take that as a hand on the knob and override
+// (switch off) its automation. Those knobs keep showing the automated value.
+function sendDials(only) {
+  for (let v = 0; v < NUM_VOICES; v++) {
+    if (only !== undefined && v !== only) continue;
+    const vals = eng.dialValues(v, v === selVoice && lockEdit ? selStep : -1);
+    for (let sl = 0; sl < vals.length; sl++) if (!automationPlaying(v, sl)) outlet(1, [v * NUM_SLOTS + sl, vals[sl]]);
+  }
 }
 sendDials.local = 1;
 
 // Each menu lists its own parameter plus those not on another dial of the selected drum
 function sendMenus() {
   const voice = eng.voices[selVoice];
-  for (let sl = 0; sl < NUM_SLOTS; sl++) outlet(8, [sl, '_parameter_unitstyle', voice.dials[sl] === 'Pitch' ? UNIT_MIDI : UNIT_INT]);
+  for (let v = 0; v < NUM_VOICES; v++) for (let sl = 0; sl < NUM_SLOTS; sl++) {
+    const k = v * NUM_SLOTS + sl;
+    outlet(8, [k, 'hidden', v === selVoice ? 0 : 1]);
+    outlet(8, [k, '_parameter_unitstyle', eng.voices[v].dials[sl] === 'Pitch' ? UNIT_MIDI : UNIT_INT]);
+  }
   for (let sl = 0; sl < NUM_SLOTS; sl++) {
     outlet(4, [sl, 'clear']);
     for (const n of eng.availableFor(selVoice, sl)) outlet(4, [sl, 'append', n]);

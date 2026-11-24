@@ -7,6 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [0.2.0] — 2026-11-24
 
+### Changed
+- **Knob automation is per drum.** Each drum has its own 12 knobs (only the selected drum's are shown), so the
+  automation list reads `6 Knob 1` … and automation always moves its own drum, whatever is selected.
+  Automation drawn on 0.1.0's `Knob 1–12` must be redrawn on the new per-drum knobs.
+
 ### Fixed
 - Automating a drum's row (e.g. Mute) changed the selected drum, so knob automation suddenly moved a different
   drum. Only mouse edits change the selection now.
@@ -44,4 +49,4 @@ First public version.
 - Level and Pan can't be locked: the Nord glides them, so per-step changes land on the wrong hit. Use Velocity locks
   for accents.
 - The Nord doesn't send a bank number with program changes, so a bank change on its panel isn't seen.
-- Knob automation follows the selected drum.
+- Knob automation follows the selected drum (changed in 0.2.0).

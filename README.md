@@ -93,7 +93,7 @@ edits on the Nord, record and load a fresh dump.
 - **Pattern table** (left): Steps, Hits, Rot(ation), Vel(ocity), **M**ute and **S**olo per drum.
 - **Grid**: orange = hits, white = playhead. Click a row to select the drum whose knobs are shown; drag ↔ to rotate,
   ↕ to change hits. The header shows the selected drum, last incoming MIDI and the loaded kits file.
-- **Knobs** (right): 12 per drum, colour-coded to the selected drum. The menu above each knob chooses its
+- **Knobs** (right): 12 per drum, colour-coded; you see the selected drum's. The menu above each knob chooses its
   parameter (each drum keeps its own layout).
   - **Edit locks off**: knobs set the drum's base sound and send it right away.
   - **Edit locks on**: click a hit, then turn knobs to lock values on that step (blue dot). Click the step again to
@@ -106,15 +106,16 @@ edits on the Nord, record and load a fresh dump.
 
 ### Automation
 
-The automation chooser lists `1 Steps` … `6 Solo` and `Knob 1–12`. Knob automation changes the **selected drum's**
-base sound; it never writes locks, and Sextant won't move a knob that automation is driving.
+The automation chooser lists each drum's controls together: `1 Steps`, `1 Hits`, `1 Rot`, `1 Mute`, `1 Solo`,
+`1 Knob 1` … `1 Knob 12`, then drum 2, and so on. Each drum has its own knobs, so `6 Knob 1` always moves drum 6's
+first knob (whatever parameter you've chosen for it), whichever drum is selected. Knob automation changes the base
+sound; it never writes locks, and Sextant won't move a knob that automation is driving.
 
 ## Known limitations
 
 - **Level and Pan can't be locked.** The Nord glides these two instead of jumping, so per-step changes land on the
   wrong hit. Use **Velocity** locks for accents. Both still work as base sound and automation.
 - **Bank changes on the Nord's panel aren't seen** (the Nord sends no bank number). Set Sextant's Bank to match once.
-- Knob automation follows the selected drum rather than a fixed one.
 - Max for Live JavaScript runs at a lower priority than Live's audio, so under heavy CPU load timing can wobble
   slightly more than with plain MIDI clips.
 - Not tested with the Nord Drum 3P, which has a similar MIDI implementation.

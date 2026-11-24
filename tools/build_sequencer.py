@@ -164,39 +164,47 @@ for v in range(6):
     for i, (obj, key) in enumerate(ctrls):
         held(obj, f'param {v} {key}', 40 + i * 120, py + 25)
 
-# ---- 12 dials (right), 2 rows of 6; each has a parameter menu above it ----
-# The menu (a plain umenu, not a Live parameter) is the dial's label; its items come from the engine:
-# the dial's own parameter plus any not already on another dial of the selected drum.
-NUM_DIALS = 12
+# ---- Knobs (right): 12 per drum, in six stacked sets; only the selected drum's set is visible ----
+# Each drum has its own 12 knob parameters ("6 Knob 1" ...), so automation always moves the same drum whatever is
+# selected. The 12 menus above them (plain umenus, not Live parameters) label the visible set; their items come
+# from the engine: the knob's parameter plus any not already on another knob of that drum.
+NUM_DIALS, NUM_DRUMS = 12, 6
 DX, DY, CW, RH = 620, 2, 47, 56          # left, top, column width, row height
-route_val = p.box('route ' + ' '.join(map(str, range(NUM_DIALS))), x=400, y=1000, w=260, ins=1, outs=NUM_DIALS + 1,
-                  outtypes=[''] * (NUM_DIALS + 1))
+DRUM_RGB = [[c / 255 for c in (h >> 16 & 255, h >> 8 & 255, h & 255)] + [1.0]
+            for h in (0xff6b5b, 0xffb03b, 0xe8e04a, 0x5fd36b, 0x4fb8ff, 0xc07bff)]
+NK = NUM_DIALS * NUM_DRUMS               # knob index = drum * 12 + slot
+route_val = p.box('route ' + ' '.join(map(str, range(NK))), x=400, y=1000, w=600, ins=1, outs=NK + 1,
+                  outtypes=[''] * (NK + 1))
+route_attr = p.box('route ' + ' '.join(map(str, range(NK))), x=400, y=1080, w=600, ins=1, outs=NK + 1,
+                   outtypes=[''] * (NK + 1))
 route_menu = p.box('route ' + ' '.join(map(str, range(NUM_DIALS))), x=400, y=1040, w=260, ins=1, outs=NUM_DIALS + 1,
                    outtypes=[''] * (NUM_DIALS + 1))
 p.wire(ui, route_val, 1, 0)
-route_attr = p.box('route ' + ' '.join(map(str, range(NUM_DIALS))), x=400, y=1080, w=260, ins=1, outs=NUM_DIALS + 1,
-                   outtypes=[''] * (NUM_DIALS + 1))
 p.wire(ui, route_attr, 8, 0)
 p.wire(ui, route_menu, 4, 0)
 for i in range(NUM_DIALS):
     col, row = i % 6, i // 6
     px, py = DX + col * CW, DY + row * RH
-    bx, by = 400 + i * 110, 700
-    menu = p.box(maxclass='umenu', x=bx, y=by, w=46, h=15, ins=1, outs=3, outtypes=['int', '', ''],
+    bx = 400 + i * 110
+    menu = p.box(maxclass='umenu', x=bx, y=700, w=46, h=15, ins=1, outs=3, outtypes=['int', '', ''],
                  present=[px, py, 45, 15], fontsize=8.0, items=[], parameter_enable=0, arrow=0)
-    d = p.box(maxclass='live.dial', x=bx, y=by + 30, w=44, h=36, ins=1, outs=2, outtypes=['', 'float'],
-              present=[px + 3, py + 16, 40, 36], parameter_enable=1, varname=f'Dial {i+1}', showname=0,
-              saved_attribute_attributes=param_attrs(f'Dial {i+1}', 0, 0, 127, 64,
-                                                     {'parameter_shortname': f'D{i+1}', 'parameter_unitstyle': 0}))
-    pre = p.box(f'prepend dial {i}', x=bx, y=by + 80, w=80, ins=1, outs=1)
-    p.wire(d, pre); p.wire(pre, ui)
-    setp = p.box('prepend set', x=bx, y=by + 110, w=70, ins=1, outs=1)       # engine -> dial, no output
-    p.wire(route_val, setp, i, 0); p.wire(setp, d)
-    p.wire(ui, d, 2, 0)                                                      # dial colour = selected drum
-    p.wire(route_attr, d, i, 0)                                              # unit style (note names for Pitch)
     p.wire(route_menu, menu, i, 0)                                           # engine fills the menu
-    pk = p.box(f'prepend pick {i}', x=bx, y=by + 140, w=80, ins=1, outs=1)
+    pk = p.box(f'prepend pick {i}', x=bx, y=730, w=80, ins=1, outs=1)
     p.wire(menu, pk, 1, 0); p.wire(pk, ui)                                   # chosen item text -> engine
+    for dr in range(NUM_DRUMS):
+        k = dr * NUM_DIALS + i
+        by = 1200 + dr * 160
+        d = p.box(maxclass='live.dial', x=bx, y=by, w=44, h=36, ins=1, outs=2, outtypes=['', 'float'],
+                  present=[px + 3, py + 16, 40, 36], parameter_enable=1, varname=f'Dial {dr+1}.{i+1}', showname=0,
+                  hidden=0 if dr == 0 else 1,
+                  activedialcolor=DRUM_RGB[dr], activeneedlecolor=DRUM_RGB[dr],
+                  saved_attribute_attributes=param_attrs(f'Dial {dr+1}.{i+1}', 0, 0, 127, 64,
+                                                         {'parameter_unitstyle': 0}))
+        pre = p.box(f'prepend dial {dr} {i}', x=bx, y=by + 45, w=90, ins=1, outs=1)
+        p.wire(d, pre); p.wire(pre, ui)
+        setp = p.box('prepend set', x=bx, y=by + 75, w=70, ins=1, outs=1)    # engine -> knob, no output
+        p.wire(route_val, setp, k, 0); p.wire(setp, d)
+        p.wire(route_attr, d, k, 0)                                          # hidden / unit style
 
 # Edit locks: toggle in Live's standard 'on' colour. A hidden Live parameter (live.text only keeps toggle
 # state as a parameter); "hidden" means it can't be automated or mapped, and it starts off on load.
@@ -230,22 +238,23 @@ for b in p.boxes:
     if m:
         drum, col = int(m.group(1)), m.group(2)
         v['parameter_longname'] = f'{drum} {col}'
-        v['parameter_order'] = drum * 10 + COL_ORDER.index(col)
+        v['parameter_order'] = drum * 100 + COL_ORDER.index(col)
         if col in HIDE: v['parameter_invisible'] = 1
         continue
-    m = _re.match(r'Dial (\d+)$', name)
+    m = _re.match(r'Dial (\d)\.(\d+)$', name)
     if m:
-        v['parameter_longname'] = f'Knob {m.group(1)}'; v['parameter_shortname'] = f'Knob {m.group(1)}'
-        v['parameter_order'] = 100 + int(m.group(1))
+        dr, k = int(m.group(1)), int(m.group(2))
+        v['parameter_longname'] = f'{dr} Knob {k}'; v['parameter_shortname'] = f'Knob {k}'
+        v['parameter_order'] = dr * 100 + 20 + k
         continue
     if name in ('Nord Bank', 'Nord Prog'):
-        v['parameter_invisible'] = 1; v['parameter_order'] = 200 + (name == 'Nord Prog')
+        v['parameter_invisible'] = 1; v['parameter_order'] = 900 + (name == 'Nord Prog')
     elif v.get('parameter_invisible') != 2:
-        v.setdefault('parameter_order', 300)
+        v.setdefault('parameter_order', 950)
 
 d = p.to_dict(width=DX + 6 * CW + 6)
 d['patcher']['description'] = (f'Sextant {VERSION} — Euclidean sequencer for Nord Drum 2. Six drums with steps, hits and rotation, '
-    'plus per-step parameter locks on 12 assignable dials. Put this on a track sending to the Nord on Ch. 10, '
+    'plus per-step parameter locks on 12 assignable knobs per drum. Put this on a track sending to the Nord on Ch. 10, '
     'and a Sextant Out device on six tracks sending on Ch. 1-6.')
 write_amxd(os.path.join(OUT, 'Sextant.amxd'), d)
 write_maxpat(os.path.join(OUT, 'Sextant.maxpat'), d)
