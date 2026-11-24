@@ -90,8 +90,7 @@ edits on the Nord, record and load a fresh dump.
 
 ## Using it
 
-- **Pattern table** (left): Steps, Hits, Rot(ation), Vel(ocity) per drum; **Pitch** plays that drum's notes on its own
-  channel instead (pitched by note number); **M**ute and **S**olo.
+- **Pattern table** (left): Steps, Hits, Rot(ation), Vel(ocity), **M**ute and **S**olo per drum.
 - **Grid**: orange = hits, white = playhead. Click a row to select the drum whose knobs are shown; drag ↔ to rotate,
   ↕ to change hits. The header shows the selected drum, last incoming MIDI and the loaded kits file.
 - **Knobs** (right): 12 per drum, colour-coded to the selected drum. The menu above each knob chooses its
@@ -101,6 +100,8 @@ edits on the Nord, record and load a fresh dump.
     deselect. **Clr step**, shift-click, or **Clr drum** remove locks; Clr drum also restores the program's sound.
 - **Hollow dot / red header line**: a locked parameter has no base value to return to (no kits loaded and never
   touched). Nudge that knob on the Nord once, or load your kits.
+- **Melodies**: lock **Pitch** per step. The Pitch knob shows note names (Live's convention, 60 = C3; the Nord's
+  A440 is A3), and unlocked hits return to the kit's tuning.
 - **Bank / Prog**: type, drag or use ◀ ▶ (rolls over between banks).
 
 ### Automation

@@ -3,6 +3,26 @@
 All notable changes to Sextant. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [0.2.0] — 2026-11-24
+
+### Fixed
+- Automating a drum's row (e.g. Mute) changed the selected drum, so knob automation suddenly moved a different
+  drum. Only mouse edits change the selection now.
+- Sextant stopped when Live's loop jumped back (the transport-locked clock was left waiting for a position past the
+  loop end). A watchdog now restarts the clock after loop jumps or position changes.
+
+### Removed
+- The per-drum **Pitch** switch (pitched notes on the drum's own channel). It only retuned the drum to a fixed note;
+  use **Pitch** locks for melodies instead.
+
+### Changed
+- The Pitch knob shows note names (Live's convention: 60 = C3, so the Nord's 69 = A440 is A3), and the lock list in
+  the grid header shows each locked value.
+- Lock markers on the grid now contrast by brightness instead of colour (dark dot on hits, light dot on empty steps)
+  and are slightly larger, so they're readable with colour blindness.
+
 ## [0.1.0] — 2026-11-22
 
 First public version.

@@ -1,6 +1,6 @@
 {
   "name": "sextant",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Sextant — Euclidean sequencer with per-step parameter locks for the Nord Drum 2 (Max for Live)",
   "private": true,
   "license": "MIT",

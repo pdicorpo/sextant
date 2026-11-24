@@ -110,7 +110,7 @@ function makeVoice(i) {
     steps: 16, hits: 0, rotation: 0,
     note: DEFAULT_NOTES[i],
     velocity: 100,
-    noteChannel: 10,   // global mode by default
+    noteChannel: 10,   // notes always go to the Nord's global channel (fixed tuning per program)
     ccChannel: i + 1,  // this drum's own channel, for its parameter CCs
     mute: false,
     solo: false,

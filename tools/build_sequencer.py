@@ -22,7 +22,7 @@ mout = p.box('midiout', x=20, y=1000, outs=0)
 
 # Engine + step grid in one embedded v8ui. It is also a hidden Live parameter so locks save with the Set.
 GRID = [284, 4, 330, 160]
-ui = p.box(maxclass='v8ui', x=20, y=900, w=330, h=160, ins=1, outs=8, outtypes=[''] * 8,
+ui = p.box(maxclass='v8ui', x=20, y=900, w=330, h=160, ins=1, outs=10, outtypes=[''] * 10,
            present=GRID, filename='none', parameter_enable=1, varname='NE Locks',
            textfile={'text': jscode, 'filename': 'none', 'flags': 0, 'embed': 1, 'autowatch': 1},
            saved_attribute_attributes={'valueof': {
@@ -45,6 +45,16 @@ tr = p.box('transport', x=600, y=60, w=80, ins=2, outs=9, outtypes=['int'] * 9)
 ex = p.box('expr int($f1/120.+0.5)', x=600, y=100, w=160, ins=1, outs=1)
 pre_step = p.box('prepend step', x=600, y=140, ins=1, outs=1)
 p.wire(metro, tr); p.wire(tr, ex, 7, 0); p.wire(ex, pre_step); p.wire(pre_step, ui)
+p.wire(ui, metro, 9, 0)                    # watchdog restarts the metro after a loop jump
+
+# Clock watchdog: every 40 ms send Live's tempo and position (ticks) to the engine. [transport] fires its outlets
+# right to left, so ticks (outlet 7) arrives first into pack's right inlet, then tempo (outlet 4) triggers it.
+wmet = p.box('metro 40', x=800, y=20, w=60, ins=2, outs=1, outtypes=['bang'])
+wtr = p.box('transport', x=800, y=60, w=80, ins=2, outs=9, outtypes=['int'] * 9)
+wpk = p.box('pack 0. 0.', x=800, y=100, w=70, ins=2, outs=1)
+wpre = p.box('prepend watch', x=800, y=130, w=90, ins=1, outs=1)
+won = p.box('1', maxclass='message', x=880, y=20, w=30, ins=2, outs=1)
+p.wire(won, wmet); p.wire(wmet, wtr); p.wire(wtr, wpk, 7, 1); p.wire(wtr, wpk, 4, 0); p.wire(wpk, wpre); p.wire(wpre, ui)
 
 thisdev = p.box('live.thisdevice', x=300, y=20, w=100, ins=1, outs=3, outtypes=['bang', 'int', 'int'])
 rc = p.box('resetcc', maxclass='message', x=300, y=60, w=60, ins=2, outs=1)
@@ -56,6 +66,7 @@ mch = p.box('change', x=460, y=120, w=50, ins=1, outs=3, outtypes=['', 'int', 'i
 mpre = p.box('prepend mouse', x=460, y=150, w=90, ins=1, outs=1)
 p.wire(thisdev, mpoll); p.wire(mpoll, ms); p.wire(ms, mch); p.wire(mch, mpre); p.wire(mpre, ui)
 dl = p.box('deferlow', x=380, y=60, ins=1, outs=1)
+p.wire(thisdev, won)                       # start the watchdog once the device is loaded
 p.wire(thisdev, dl); p.wire(dl, ui)        # bang -> sendDials() once the device is ready
 
 # ---- Program (top left): Nord bank 1-8, program 1-50. Shows what the Nord reports; changing sends it. ----
@@ -79,10 +90,10 @@ for i, (lab, key, hi, lx, bx_, bw) in enumerate(PROG_LAYOUT):
 p.box(maxclass='comment', text='Sextant', x=20, y=60, w=100, h=20, ins=1, outs=0, present=[4, 2, 50, 18], fontface=1)
 p.box(maxclass='comment', text=f'v{VERSION}', x=130, y=60, w=60, h=16, ins=1, outs=0, present=[50, 4, 34, 14], fontsize=8.0,
       textcolor=[0.6, 0.6, 0.6, 1.0])
-xs = [24, 66, 108, 150, 190]
-for label, x in zip(['Steps', 'Hits', 'Rot', 'Vel', 'Pitch'], xs):
+xs = [24, 66, 108, 150]
+for label, x in zip(['Steps', 'Hits', 'Rot', 'Vel'], xs):
     p.box(maxclass='comment', text=label, x=20, y=60, w=40, h=18, ins=1, outs=0, present=[x, 18, 40, 16])
-MX, SX = 228, 250                                    # M and S columns
+MX, SX = 200, 222                                    # M and S columns
 
 def param_attrs(name, ptype, lo=0, hi=1, init=0, extra=None):
     d = {'parameter_longname': name, 'parameter_shortname': name.split()[-1], 'parameter_type': ptype,
@@ -148,7 +159,6 @@ for v in range(6):
         if key in ('steps', 'hits', 'rotation', 'velocity'):   # engine corrections / drags / Velocity knob -> box
             sp = p.box('prepend set', x=40 + c * 120, y=py + 75, w=70, ins=1, outs=1)
             p.wire(route_row, sp, ROWKEYS.index(f'{key}{v}'), 0); p.wire(sp, nb)
-    ctrls.append((toggle(f'V{v+1} Pitch', 520, py, [xs[4] + 10, row_y, 15, 15]), 'pitched'))
     ctrls.append((textbtn(f'V{v+1} Mute', 'M', 600, py, [MX, row_y, 18, 15]), 'mute'))
     ctrls.append((textbtn(f'V{v+1} Solo', 'S', 680, py, [SX, row_y, 18, 15], oncolor=LIVE_SOLO_BLUE), 'solo'))
     for i, (obj, key) in enumerate(ctrls):
@@ -164,6 +174,9 @@ route_val = p.box('route ' + ' '.join(map(str, range(NUM_DIALS))), x=400, y=1000
 route_menu = p.box('route ' + ' '.join(map(str, range(NUM_DIALS))), x=400, y=1040, w=260, ins=1, outs=NUM_DIALS + 1,
                    outtypes=[''] * (NUM_DIALS + 1))
 p.wire(ui, route_val, 1, 0)
+route_attr = p.box('route ' + ' '.join(map(str, range(NUM_DIALS))), x=400, y=1080, w=260, ins=1, outs=NUM_DIALS + 1,
+                   outtypes=[''] * (NUM_DIALS + 1))
+p.wire(ui, route_attr, 8, 0)
 p.wire(ui, route_menu, 4, 0)
 for i in range(NUM_DIALS):
     col, row = i % 6, i // 6
@@ -180,6 +193,7 @@ for i in range(NUM_DIALS):
     setp = p.box('prepend set', x=bx, y=by + 110, w=70, ins=1, outs=1)       # engine -> dial, no output
     p.wire(route_val, setp, i, 0); p.wire(setp, d)
     p.wire(ui, d, 2, 0)                                                      # dial colour = selected drum
+    p.wire(route_attr, d, i, 0)                                              # unit style (note names for Pitch)
     p.wire(route_menu, menu, i, 0)                                           # engine fills the menu
     pk = p.box(f'prepend pick {i}', x=bx, y=by + 140, w=80, ins=1, outs=1)
     p.wire(menu, pk, 1, 0); p.wire(pk, ui)                                   # chosen item text -> engine
@@ -206,8 +220,8 @@ for i, (label, msg) in enumerate([('Clr step', 'clearstep'), ('Clr drum', 'clear
 # Live's automation chooser lists every visible parameter, in parameter order. Rename to "1 Steps" ... "6 Solo",
 # "Knob 1-12", and make the ones nobody automates "stored only" (saved with the Set, not in the automation list).
 import re as _re
-HIDE = {'Vel', 'Pitch'}
-COL_ORDER = ['Steps', 'Hits', 'Rot', 'Vel', 'Pitch', 'Mute', 'Solo']
+HIDE = {'Vel'}
+COL_ORDER = ['Steps', 'Hits', 'Rot', 'Vel', 'Mute', 'Solo']
 for b in p.boxes:
     v = b['box'].get('saved_attribute_attributes', {}).get('valueof')
     if not v: continue

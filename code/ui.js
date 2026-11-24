@@ -6,9 +6,11 @@
 //            the Out tracks) always reach the Nord before its note; Live doesn't order MIDI across tracks.
 //          6 "bank n" / "prog n" -> the program boxes (via [prepend set], no feedback)
 //          7 "<key><drum> value" (e.g. hits3 5) -> a row's number boxes, when the engine corrects or drags a value
+//          8 "slot _parameter_unitstyle n" -> one dial: note names when it shows Pitch, plain numbers otherwise
+//          9 0 / 1 -> the 16th-note [metro]: restart it when Live's loop (or a jump) leaves it waiting
 autowatch = 1;
 inlets = 1;
-outlets = 8;
+outlets = 10;
 mgraphics.init();
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -34,10 +36,11 @@ let lockEdit = 0;   // dials only write locks while Lock edit is on (so automati
 // ---------- messages from the patch ----------
 function param(v, key, val) {
   val = Math.round(val);                    // controls are continuous for Live's automation lanes
-  if (key === 'pitched') eng.set(v, 'noteChannel', val ? v + 1 : 10);
-  else if (key === 'steps' || key === 'hits' || key === 'rotation') setPattern(v, key, val);
+  if (key === 'steps' || key === 'hits' || key === 'rotation') setPattern(v, key, val);
   else eng.set(v, key, (key === 'mute' || key === 'solo') ? !!val : val);
-  if (ready && v !== selVoice) { selectVoice(v); selStep = -1; sendDials(); }   // touching a row selects that drum
+  // Touching a row selects that drum, but only when it's a hand (mouse down). Automation of a row (e.g. a Mute lane)
+  // must not move the selection: the knobs' automation follows the selected drum.
+  if (ready && mouseDown && v !== selVoice) { selectVoice(v); selStep = -1; sendDials(); }
   if (selVoice === v && selStep >= eng.voices[v].steps) selStep = -1;
   mgraphics.redraw();
 }
@@ -60,7 +63,28 @@ function setPattern(v, key, val) {
 }
 setPattern.local = 1;
 
+// ---- clock watchdog ----
+// The 16th-note metro is locked to Live's transport and schedules its next tick at a future position. When Live
+// loops (or you jump) back before that position, the tick never comes and the sequencer stops. watch() gets Live's
+// tempo and position ~25x a second: if the position went backwards, or no step arrived for 2.5 sixteenths while
+// the transport is moving, restart the metro (it re-locks to the next 16th).
+let lastStepIdx = -1, lastStepAt = 0, prevTicks = -1, lastRestart = 0;
+function watch(tempo, ticks) {
+  const now = Date.now();
+  const moving = prevTicks >= 0 && ticks !== prevTicks;
+  const jumpedBack = moving && ticks < prevTicks;
+  prevTicks = ticks;
+  if (!moving || now - lastRestart < 150) return;
+  const sixteenth = 60000 / Math.max(20, tempo || 120) / 4;
+  if (jumpedBack || now - lastStepAt > sixteenth * 2.5) {
+    lastRestart = now;
+    lastStepAt = now;                          // give the restarted metro a moment before checking again
+    outlet(9, 0); outlet(9, 1);
+  }
+}
+
 function step(s) {
+  lastStepIdx = s; lastStepAt = Date.now();
   const ev = eng.tick(s);
   for (let i = 0; i < ev.length; i++) {
     const e = ev[i];
@@ -72,7 +96,7 @@ function step(s) {
 
 function emitNote(bytes) {
   if (((bytes[0] & 15) + 1) === MAIN_CH) outlet(5, bytes);   // delayed: after the CCs
-  else emit(bytes);                                          // pitched notes travel with their drum's CCs
+  else emit(bytes);
 }
 emitNote.local = 1;
 
@@ -305,6 +329,11 @@ function handleIn(m) {
 handleIn.local = 1;
 
 // ---------- dials and menus ----------
+// Note name in Live's convention (60 = C3; the Nord's 69 = A440 shows as A3)
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+function noteName(n) { return NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 2); }
+function fmtValue(name, val) { return name === 'Pitch' ? noteName(val) : String(val); }
+const UNIT_INT = 0, UNIT_MIDI = 8;          // live.dial unit styles: plain integer / MIDI note name
 const DRUM_COLORS = [0xff6b5b, 0xffb03b, 0xe8e04a, 0x5fd36b, 0x4fb8ff, 0xc07bff].map(h => rgb(h));
 function sendDials() {
   const vals = eng.dialValues(selVoice, lockEdit ? selStep : -1);
@@ -320,6 +349,7 @@ sendDials.local = 1;
 // Each menu lists its own parameter plus those not on another dial of the selected drum
 function sendMenus() {
   const voice = eng.voices[selVoice];
+  for (let sl = 0; sl < NUM_SLOTS; sl++) outlet(8, [sl, '_parameter_unitstyle', voice.dials[sl] === 'Pitch' ? UNIT_MIDI : UNIT_INT]);
   for (let sl = 0; sl < NUM_SLOTS; sl++) {
     outlet(4, [sl, 'clear']);
     for (const n of eng.availableFor(selVoice, sl)) outlet(4, [sl, 'append', n]);
@@ -341,7 +371,7 @@ function geom() { const [w, h] = mgraphics.size; return { w, h, gx: LABEL_W, gw:
 function rgb(hex, a) { return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255, a === undefined ? 1 : a]; }
 const C = { bg: rgb(0x1e1e1e), off: rgb(0x3a3a3a), hit: rgb(0xff9b2f), play: rgb(0xffffff, 0.35), sel: rgb(0xffffff),
             lock: rgb(0x4fd1ff), text: rgb(0xcfcfcf), mute: rgb(0x6a6a6a), dim: rgb(0x8a8a8a), warn: rgb(0xff5a4a),
-            edit: rgb(0xe8453c) };
+            edit: rgb(0xe8453c), markDark: rgb(0x141414), markLight: rgb(0xe8e8e8) };
 
 function paint() {
   const g = geom(), m = mgraphics;
@@ -364,7 +394,8 @@ function paint() {
     const missing = eng.missingBase(selVoice, selStep);
     const L = Object.keys(v.locks[selStep] || {});
     if (missing.length) { line2 = `no base for ${missing.join(', ')}: nudge it on the Nord`; warn = true; }
-    else line2 = L.length ? 'locked: ' + L.join(' ') : 'turn a dial to lock it (Level/Pan: not lockable, use Velocity)';
+    else line2 = L.length ? 'locked: ' + L.map(n => n + ' ' + fmtValue(n, v.locks[selStep][n])).join(' · ')
+                          : 'turn a dial to lock it (Level/Pan: not lockable, use Velocity)';
   } else if (lockEdit) line2 = 'click a step to edit its locks · shift-click clears';
   else line2 = 'click a row to pick the drum · drag ↔ rotate, ↕ hits';
   m.set_source_rgba(warn ? C.warn : C.dim); m.move_to(13, 21); m.show_text(line2);
@@ -384,8 +415,13 @@ function paint() {
       m.rectangle(x + 1, y + 2, Math.max(1, cw - 2), g.rowH - 4); m.fill();
       if (s === voice.pos) { m.set_source_rgba(C.play); m.rectangle(x + 1, y + 2, Math.max(1, cw - 2), g.rowH - 4); m.fill(); }
       if (voice.locks[s]) {
-        m.set_source_rgba(C.lock); m.ellipse(x + cw / 2 - 2, y + g.rowH - 8, 4, 4);
-        if (eng.stepCanReturn(r, s)) m.fill(); else { m.set_line_width(1); m.stroke(); }
+        // Lock marker: contrast by brightness, not hue (readable with colour blindness): a near-black dot on
+        // bright cells (hits, playhead), a light dot on dark ones. Hollow = no base value to return to.
+        const bright = isHit || s === voice.pos;
+        const d = Math.max(3, Math.min(6, cw - 4));
+        m.set_source_rgba(bright ? C.markDark : C.markLight);
+        m.ellipse(x + cw / 2 - d / 2, y + g.rowH - d - 4, d, d);
+        if (eng.stepCanReturn(r, s)) m.fill(); else { m.set_line_width(1.5); m.stroke(); }
       }
       if (lockEdit && r === selVoice && s === selStep) {
         m.set_source_rgba(C.sel); m.set_line_width(1.5); m.rectangle(x + 0.5, y + 1, cw - 1, g.rowH - 2); m.stroke();
